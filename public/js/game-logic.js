@@ -303,8 +303,15 @@ class BingoGame {
           
         case 'false-bingo':
           if (data.uid && data.uid !== this.playerUid && this.players.has(data.uid)) {
-            this.players.get(data.uid).score = data.score;
-            console.log(`${this.players.get(data.uid).name} called a false BINGO! -${data.penalty} points`);
+            const player = this.players.get(data.uid);
+            player.score = data.score;
+            console.log(`${player.name} called a false BINGO! -${data.penalty} points`);
+            
+            // Host announces the false bingo
+            if (this.isHost) {
+              await this.announceFalseBingo(player.name);
+            }
+            
             this.updateUI();
           }
           break;
@@ -463,21 +470,23 @@ class BingoGame {
         return;
       }
       
-      // Pick random number
+      // Pick random number FIRST
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const number = availableNumbers.splice(randomIndex, 1)[0];
       
       console.log('Calling number:', number);
+      
+      // Broadcast immediately so other players see it
+      await this.broadcastGameState('number-called', { number });
+      
+      // Add to our list and update UI
       this.calledNumbers.push(number);
       this.updateUI();
       
-      // Announce with ConvoAI FIRST (wait for it to complete)
+      // THEN announce with ConvoAI (includes agent join, speak, leave)
       await this.announceNumber(number);
       
-      // THEN broadcast the called number to other players
-      await this.broadcastGameState('number-called', { number });
-      
-      // Schedule next number after 3 seconds delay (agent should be done by then)
+      // Schedule next number after 3 seconds delay
       this.callerInterval = setTimeout(callNextNumber, 3000);
     };
     
@@ -548,10 +557,20 @@ class BingoGame {
       const penalty = 5;
       this.score = Math.max(0, this.score - penalty);
       
+      // Update our player entry
+      if (this.players.has(this.playerUid)) {
+        this.players.get(this.playerUid).score = this.score;
+      }
+      
       await this.broadcastGameState('false-bingo', {
         score: this.score,
         penalty: penalty
       });
+      
+      // Announce the false bingo with agent
+      if (this.isHost) {
+        await this.announceFalseBingo(this.playerName);
+      }
       
       this.updateUI();
       
@@ -666,6 +685,18 @@ class BingoGame {
       await this.convoAIManager.announceNumber(this.channelName, message);
     } catch (error) {
       console.error('Failed to announce game event:', error);
+    }
+  }
+  
+  async announceFalseBingo(playerName) {
+    if (!this.convoAIManager || !this.isHost) return;
+    
+    const announcement = `Oops! ${playerName} called BINGO but they didn't have it! That's a penalty!`;
+    
+    try {
+      await this.convoAIManager.announceNumber(this.channelName, announcement);
+    } catch (error) {
+      console.error('Failed to announce false bingo:', error);
     }
   }
   
