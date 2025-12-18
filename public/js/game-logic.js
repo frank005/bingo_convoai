@@ -38,7 +38,6 @@ class BingoGame {
   
   generateBoard() {
     const size = window.config.boardSize;
-    const board = [];
     const usedNumbers = new Set();
     
     // Generate random numbers for each column
@@ -50,6 +49,8 @@ class BingoGame {
       [61, 75]   // O
     ];
     
+    // Generate numbers for each column
+    const columns = [];
     for (let col = 0; col < size; col++) {
       const [min, max] = ranges[col];
       const columnNumbers = [];
@@ -61,13 +62,18 @@ class BingoGame {
           columnNumbers.push(num);
         }
       }
-      
-      for (let row = 0; row < size; row++) {
+      columns.push(columnNumbers);
+    }
+    
+    // Build board in row-major order (the flat array maps to grid by rows)
+    const board = [];
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
         if (row === Math.floor(size / 2) && col === Math.floor(size / 2)) {
           // Free space in center
           board.push({ number: 'FREE', isFreeSpace: true, col, row });
         } else {
-          board.push({ number: columnNumbers[row], isFreeSpace: false, col, row });
+          board.push({ number: columns[col][row], isFreeSpace: false, col, row });
         }
       }
     }
@@ -386,7 +392,7 @@ class BingoGame {
     
     // Only the host runs the caller
     if (this.isHost) {
-      await this.announceGameEvent('Let\'s start the bingo game! Get ready for the first number!');
+      // Start calling numbers immediately without greeting
       this.startCaller();
     }
   }
