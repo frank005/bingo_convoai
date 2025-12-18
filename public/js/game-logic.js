@@ -28,6 +28,7 @@ class BingoGame {
   
   generateAllNumbers() {
     // Generate all possible bingo numbers (1-75)
+    // Using full range to maintain proper column distribution: B(1-15), I(16-30), N(31-45), G(46-60), O(61-75)
     const numbers = [];
     for (let i = 1; i <= 75; i++) {
       numbers.push(i);
@@ -287,8 +288,9 @@ class BingoGame {
           break;
           
         case 'number-called':
-          if (data.number) {
+          if (data.number && !this.calledNumbers.includes(data.number)) {
             this.calledNumbers.push(data.number);
+            console.log('Received number call:', data.number, 'Total called:', this.calledNumbers.length);
             // Don't auto-mark - let players mark manually
             this.updateUI();
           }
@@ -717,11 +719,18 @@ class BingoGame {
   }
   
   getColumnLetter(number) {
+    // Standard Bingo column mapping
     if (number >= 1 && number <= 15) return 'B';
     if (number >= 16 && number <= 30) return 'I';
     if (number >= 31 && number <= 45) return 'N';
     if (number >= 46 && number <= 60) return 'G';
     if (number >= 61 && number <= 75) return 'O';
+    
+    // For limited pool (1-50), map proportionally
+    if (number > 75) {
+      console.warn('Number out of range:', number);
+    }
+    
     return '';
   }
   

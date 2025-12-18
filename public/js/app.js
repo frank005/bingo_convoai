@@ -323,7 +323,11 @@ class BingoApp {
       const calledListEl = document.getElementById('calledNumbersList');
       if (calledListEl) {
         const recentNumbers = state.calledNumbers.slice(-10).reverse();
-        calledListEl.textContent = `Called: ${recentNumbers.join(', ')}${state.calledNumbers.length > 10 ? '...' : ''}`;
+        const formattedNumbers = recentNumbers.map(num => {
+          const letter = state.getColumnLetter ? state.getColumnLetter(num) : '';
+          return letter ? `${letter}-${num}` : num;
+        });
+        calledListEl.textContent = `Called: ${formattedNumbers.join(', ')}${state.calledNumbers.length > 10 ? '...' : ''}`;
       }
     }
     
