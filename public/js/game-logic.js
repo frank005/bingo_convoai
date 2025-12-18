@@ -230,21 +230,23 @@ class BingoGame {
           break;
         
         case 'game-created':
-          if (data.uid !== this.playerUid) {
+          // Only add player if they don't exist yet (don't overwrite scores)
+          if (data.uid !== this.playerUid && !this.players.has(data.uid)) {
             this.players.set(data.uid, {
               name: data.playerName,
-              score: 0,
+              score: data.score || 0,
               hasWon: false
             });
             this.updateUI();
           }
           break;
-          
+        
         case 'player-joined':
-          if (data.uid !== this.playerUid) {
+          // Only add player if they don't exist yet (don't overwrite scores)
+          if (data.uid !== this.playerUid && !this.players.has(data.uid)) {
             this.players.set(data.uid, {
               name: data.playerName,
-              score: 0,
+              score: data.score || 0,
               hasWon: false
             });
             
@@ -404,7 +406,7 @@ class BingoGame {
     this.stopCaller();
     
     if (this.isHost) {
-      await this.announceGameEvent('Game paused. Taking a quick break, don\'t go anywhere!');
+      await this.announceGameEvent('Game paused! Taking a quick break, but don\'t lose that energy folks! We\'ll be right back with more bingo action!');
     }
     
     this.broadcastGameState('game-paused');
@@ -416,10 +418,14 @@ class BingoGame {
     
     this.isPaused = false;
     this.gameStatus = 'playing';
+    
+    if (this.isHost) {
+      await this.announceGameEvent('We\'re BACK! Game resumed! Let\'s keep this bingo party going! Get ready for the next number!');
+    }
+    
     this.broadcastGameState('game-resumed');
     
     if (this.isHost) {
-      await this.announceGameEvent('Game resumed! Let\'s continue!');
       this.startCaller();
     }
     
@@ -447,9 +453,17 @@ class BingoGame {
       winnerPlayer.hasWon = true;
     }
     
-    // Announce winner with agent FIRST
-    if (this.isHost && this.winner) {
-      await this.triggerWinnerCommentary();
+    // Announce game end with agent FIRST
+    if (this.isHost) {
+      if (this.winner) {
+        const playerScores = Array.from(this.players.entries())
+          .map(([uid, player]) => `${player.name} with ${player.score} hit${player.score !== 1 ? 's' : ''}`)
+          .join(', ');
+        
+        await this.announceGameEvent(`Game ended early! ${this.winner} was in the lead! Final scores: ${playerScores}. Thanks for playing everyone!`);
+      } else {
+        await this.announceGameEvent('Game ended! Thanks for playing everyone! That was fun!');
+      }
     }
     
     // Then broadcast to all players
@@ -602,6 +616,11 @@ class BingoGame {
       this.stopCaller();
     }
     
+    // Announce the win with agent if we're the host
+    if (this.isHost) {
+      await this.triggerWinnerCommentary();
+    }
+    
     // Broadcast win
     await this.broadcastGameState('game-won');
     
@@ -659,7 +678,7 @@ class BingoGame {
     if (!this.convoAIManager || !this.isHost) return;
     
     const column = this.getColumnLetter(number);
-    const callText = `${column} ${number}`;
+    const callText = `${column}-${number}`;
     
     // Get current player scores
     const playerScores = Array.from(this.players.entries())
@@ -674,10 +693,20 @@ class BingoGame {
       playerScores[0].isLeading = true;
     }
     
-    // Build player stats message - make it more exciting
-    const playerStats = playerScores.map(p => `${p.name} has ${p.score} hit${p.score !== 1 ? 's' : ''}`).join(' and ');
+    // Build EXCITING player stats message with all details
+    let playerDetails = '';
+    if (playerScores.length > 0) {
+      playerDetails = playerScores.map((p, i) => {
+        if (i === 0 && playerScores.length > 1) {
+          return `${p.name} is leading with ${p.score} hit${p.score !== 1 ? 's' : ''}`;
+        }
+        return `${p.name} has ${p.score} hit${p.score !== 1 ? 's' : ''}`;
+      }).join(', ');
+    }
     
-    const announcement = `${callText}! ${playerStats}!`;
+    const announcement = `The number is ${callText}! Score update: ${playerDetails}. Keep it exciting!`;
+    
+    console.log('Announcing to agent:', announcement);
     
     try {
       await this.convoAIManager.announceNumber(this.channelName, announcement);
@@ -699,7 +728,9 @@ class BingoGame {
   async announceFalseBingo(playerName) {
     if (!this.convoAIManager || !this.isHost) return;
     
-    const announcement = `Oops! ${playerName} called BINGO but they didn't have it! That's a penalty!`;
+    const announcement = `OH NO! ${playerName} called BINGO but doesn't have it! That's a false alarm! They lose points for that mistake! Better luck next time ${playerName}!`;
+    
+    console.log('Announcing false bingo to agent:', announcement);
     
     try {
       await this.convoAIManager.announceNumber(this.channelName, announcement);
@@ -712,10 +743,12 @@ class BingoGame {
     if (!this.convoAIManager || !this.isHost) return;
     
     const playerScores = Array.from(this.players.entries())
-      .map(([uid, player]) => `${player.name} with ${player.score} hit${player.score !== 1 ? 's' : ''}`)
-      .join(' and ');
+      .map(([uid, player]) => `${player.name} finished with ${player.score} hit${player.score !== 1 ? 's' : ''}`)
+      .join(', ');
     
-    const announcement = `Game over! ${this.winner} wins with BINGO! Final scores: ${playerScores}! Congratulations!`;
+    const announcement = `WE HAVE A WINNER! ${this.winner} got BINGO and wins the game! Amazing performance! Final scores: ${playerScores}. What an incredible game! Congratulations ${this.winner}!`;
+    
+    console.log('Announcing winner to agent:', announcement);
     
     try {
       await this.convoAIManager.announceNumber(this.channelName, announcement);
@@ -746,6 +779,7 @@ class BingoGame {
       uid: this.playerUid,
       playerName: this.playerName,
       gameId: this.gameId,
+      score: this.score, // Always include current score
       timestamp: Date.now(),
       ...extraData
     };
