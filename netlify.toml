@@ -1,0 +1,15 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[dev]
+  publish = "public"
+  functions = "netlify/functions"
+  # Uncomment and change port if 8888 is in use
+  # port = 3000
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+

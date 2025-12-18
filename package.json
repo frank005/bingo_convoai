@@ -1,0 +1,32 @@
+{
+  "name": "bingo-convoai",
+  "version": "1.0.0",
+  "description": "Multiplayer Bingo Game with Agora ConvoAI, RTC, and RTM integration",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "dev:port": "node dev-server.js --port",
+    "dev:script": "./start-dev.sh",
+    "dev:netlify": "netlify dev",
+    "build": "echo 'No build step required'",
+    "deploy": "netlify deploy --prod"
+  },
+  "keywords": [
+    "bingo",
+    "agora",
+    "convoai",
+    "rtc",
+    "rtm",
+    "multiplayer",
+    "game"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "agora-access-token": "^2.0.4"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "netlify-cli": "^17.0.0"
+  }
+}

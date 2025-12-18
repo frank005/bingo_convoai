@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bingo ConvoAI - Multiplayer Bingo with AI Commentary</title>
+  <meta name="description" content="Play multiplayer bingo with Agora ConvoAI, featuring real-time voice chat and AI game show host commentary">
+  
+  <!-- Agora SDKs -->
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.21.0.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/agora-rtm-sdk@2.2.2/agora-rtm.js"></script>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/styles.css">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🎮</text></svg>">
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <h1 class="logo">🎮 Bingo ConvoAI</h1>
+    <p class="subtitle">Multiplayer Bingo with AI Commentary</p>
+  </div>
+
+  <div class="container">
+    <!-- Lobby View (Main Landing Page) -->
+    <div id="lobbyView" class="view">
+      <!-- Status Bar -->
+      <div class="card" style="margin-bottom: 1.5rem; text-align: center;">
+        <div id="configStatus" style="font-weight: 600;">
+          <span style="color: var(--text-muted);">⏳ Loading...</span>
+        </div>
+      </div>
+      <!-- Player Name Input -->
+      <div class="card" style="max-width: 600px; margin: 0 auto 1.5rem;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label" for="playerNameInput">Your Name</label>
+          <input type="text" id="playerNameInput" class="form-control" placeholder="Enter your name to play" maxlength="20">
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <!-- Create Game Card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon">🎮</div>
+            <span>Create New Game</span>
+          </div>
+          
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            Start a new game and invite a friend!
+          </p>
+          
+          <div style="padding: 1rem; background: rgba(30, 41, 59, 0.4); border-radius: 0.75rem; margin-bottom: 1rem; font-size: 0.875rem;">
+            <strong style="color: var(--agora-cyan);">How it works:</strong>
+            <ul style="margin: 0.5rem 0 0 1.25rem; color: var(--text-secondary); line-height: 1.6;">
+              <li>Create a game and get a Game ID</li>
+              <li>Share the ID with a friend</li>
+              <li>Play bingo with voice chat!</li>
+              <li>AI host provides commentary</li>
+            </ul>
+          </div>
+          
+          <button id="createGameBtn" class="btn btn-primary btn-block">
+            🎮 Create New Game
+          </button>
+        </div>
+        
+        <!-- Active Games Card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon">🔍</div>
+            <span>Active Games</span>
+          </div>
+          
+          <div style="padding: 1rem; background: rgba(30, 41, 59, 0.4); border-radius: 0.75rem; margin-bottom: 1rem;">
+            <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">
+              <strong style="color: var(--success);">● Online:</strong> <span id="onlineGameCount">0</span> games waiting for players
+            </p>
+          </div>
+          
+          <div id="gameList" class="game-list">
+            <p style="text-align: center; color: var(--text-muted); padding: 2rem;">
+              No games available. Create one!
+            </p>
+          </div>
+          
+          <button id="refreshGamesBtn" class="btn btn-secondary btn-block" style="margin-top: 1rem;">
+            🔄 Refresh Games
+          </button>
+        </div>
+      </div>
+      
+      <!-- How to Play -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <div class="card-header" style="justify-content: center;">
+          <span>🎯 How to Play Bingo</span>
+        </div>
+        <div class="grid grid-2" style="gap: 1rem;">
+          <div>
+            <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--agora-cyan);">Game Rules:</h4>
+            <ul style="margin-left: 1.25rem; color: var(--text-secondary); line-height: 1.6; font-size: 0.875rem;">
+              <li>5x5 bingo board with free center space</li>
+              <li>Automated caller announces numbers every 5 seconds</li>
+              <li><strong>Click</strong> called numbers to mark them on your board</li>
+              <li>Click "BINGO!" when you complete a line (row, column, or diagonal)</li>
+              <li>False BINGO claims = -5 points penalty!</li>
+            </ul>
+          </div>
+          <div>
+            <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--agora-cyan);">Features:</h4>
+            <ul style="margin-left: 1.25rem; color: var(--text-secondary); line-height: 1.6; font-size: 0.875rem;">
+              <li>Up to 10 players can join a game</li>
+              <li>Real-time voice chat with all players</li>
+              <li>AI caller announces each number</li>
+              <li>Live score tracking and synchronization</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game View -->
+    <div id="gameView" class="view hidden">
+      <!-- Game Info Bar -->
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <span style="color: var(--text-secondary); font-size: 0.875rem;">Game ID:</span>
+            <span id="gameIdDisplay" style="font-weight: 700; font-size: 1.25rem; margin-left: 0.5rem; color: var(--text-primary);">-</span>
+            <span id="hostBadge" style="display: none; background: var(--agora-purple); color: white; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; margin-left: 0.75rem; font-weight: 600;">HOST</span>
+          </div>
+          <div style="display: flex; gap: 0.75rem;">
+            <button id="toggleMicBtn" class="btn btn-secondary">
+              🎤 Mute
+            </button>
+            <button id="leaveGameBtn" class="btn btn-danger">
+              🚪 Leave Game
+            </button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 1rem;">
+          <label class="form-label">Share this link to invite:</label>
+          <input type="text" id="inviteLink" class="form-control" readonly onclick="this.select()">
+        </div>
+      </div>
+      
+      <!-- Game Status -->
+      <div id="gameStatus"></div>
+      
+      <!-- Host Controls -->
+      <div id="hostControls" class="card" style="margin-bottom: 1.5rem; display: none; background: rgba(99, 102, 241, 0.1); border: 2px solid var(--agora-purple);">
+        <div class="card-header" style="justify-content: center; background: var(--agora-purple); color: white;">
+          <span>🎮 Host Controls</span>
+        </div>
+        <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+          <button id="startGameBtn" class="btn btn-success" style="display: none;">
+            ▶️ Start Game
+          </button>
+          <button id="pauseGameBtn" class="btn btn-secondary" style="display: none;">
+            ⏸️ Pause Game
+          </button>
+          <button id="resumeGameBtn" class="btn btn-success" style="display: none;">
+            ▶️ Resume Game
+          </button>
+          <button id="endGameBtn" class="btn btn-danger" style="display: none;">
+            ⏹️ End Game
+          </button>
+        </div>
+      </div>
+      
+      <!-- Caller Display -->
+      <div class="card" id="callerDisplay" style="margin-bottom: 1.5rem; text-align: center; background: linear-gradient(135deg, var(--agora-purple), var(--agora-cyan));">
+        <div style="font-size: 0.875rem; color: rgba(255,255,255,0.8); margin-bottom: 0.5rem;">LAST CALLED</div>
+        <div id="lastCalledNumber" style="font-size: 4rem; font-weight: 800; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">--</div>
+        <div id="calledNumbersList" style="margin-top: 1rem; font-size: 0.875rem; color: rgba(255,255,255,0.9); max-height: 60px; overflow-y: auto;"></div>
+      </div>
+      
+      <!-- Players List -->
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-header" style="justify-content: center;">
+          <span>Players (<span id="playerCount">1</span>)</span>
+        </div>
+        <div id="playersList" style="display: grid; gap: 0.75rem;"></div>
+      </div>
+      
+      <!-- Bingo Board -->
+      <div class="card">
+        <div class="card-header" style="justify-content: center;">
+          <span>Bingo Board</span>
+        </div>
+        
+        <!-- BINGO Header -->
+        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; max-width: 500px; margin: 0 auto 1rem;">
+          <div style="text-align: center; font-weight: 800; font-size: 1.5rem; color: var(--agora-cyan);">B</div>
+          <div style="text-align: center; font-weight: 800; font-size: 1.5rem; color: var(--agora-cyan);">I</div>
+          <div style="text-align: center; font-weight: 800; font-size: 1.5rem; color: var(--agora-cyan);">N</div>
+          <div style="text-align: center; font-weight: 800; font-size: 1.5rem; color: var(--agora-cyan);">G</div>
+          <div style="text-align: center; font-weight: 800; font-size: 1.5rem; color: var(--agora-cyan);">O</div>
+        </div>
+        
+        <div id="bingoBoard" class="bingo-board">
+          <!-- Board cells will be generated by JavaScript -->
+        </div>
+        
+        <!-- BINGO Button -->
+        <div style="margin-top: 1.5rem; text-align: center;">
+          <button id="callBingoBtn" class="btn btn-primary" style="font-size: 1.5rem; padding: 1rem 3rem; font-weight: 800; background: linear-gradient(135deg, var(--agora-purple), var(--agora-cyan)); border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: none;">
+            🎉 BINGO! 🎉
+          </button>
+          <p id="bingoHint" style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary); display: none;">
+            Click when you have a complete line! (Row, Column, or Diagonal)
+          </p>
+        </div>
+        
+        <div style="margin-top: 1rem; padding: 1rem; background: rgba(30, 41, 59, 0.4); border-radius: 0.75rem; text-align: center;">
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin: 0;">
+            <strong style="color: var(--agora-cyan);">🎯 Called numbers</strong> can be clicked • 
+            <strong style="color: var(--text-primary);">FREE</strong> center space
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Scripts -->
+  <script src="/js/config.js"></script>
+  <script src="/js/agora-client.js"></script>
+  <script src="/js/game-discovery.js"></script>
+  <script src="/js/convoai-manager.js"></script>
+  <script src="/js/game-logic.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
+
