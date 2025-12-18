@@ -189,7 +189,7 @@ class BingoGame {
     console.log('Joined game:', this.gameId);
   }
   
-  handleMessage(event) {
+  async handleMessage(event) {
     try {
       const messageStr = typeof event.message === 'string' 
         ? event.message 
