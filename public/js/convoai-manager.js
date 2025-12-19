@@ -294,10 +294,11 @@ class ConvoAIManager {
       
       // Poll agent state every 500ms for faster detection
       const checkInterval = 500;
-      const maxChecks = 20; // Max 10 seconds of monitoring
+      const maxChecks = 40; // Max 20 seconds of monitoring (allows for longer speeches)
       let checks = 0;
       let lastState = null;
       let hasSpokeOnce = false;
+      let silentCount = 0; // Track consecutive silent/idle states
       
       const checkAgentState = async () => {
         try {
@@ -322,13 +323,20 @@ class ConvoAIManager {
           // Track if agent has spoken
           if (state === 'speaking') {
             hasSpokeOnce = true;
+            silentCount = 0; // Reset silent count when speaking
           }
           
           // Check if agent finished speaking (transitioned away from speaking after having spoken)
           if (hasSpokeOnce && state !== 'speaking' && state !== 'thinking') {
-            console.log('✅ Agent finished speaking, stopping agent...');
-            await this.stopAgent();
-            return true; // Done
+            silentCount++;
+            // Wait for 2 consecutive silent checks (1 second) to ensure speech is complete
+            if (silentCount >= 2) {
+              console.log('✅ Agent finished speaking (confirmed after 1s of silence), stopping agent...');
+              await this.stopAgent();
+              return true; // Done
+            }
+          } else if (hasSpokeOnce && (state === 'speaking' || state === 'thinking')) {
+            silentCount = 0; // Reset if agent starts speaking/thinking again
           }
           
           lastState = state;

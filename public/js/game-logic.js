@@ -18,6 +18,7 @@ class BingoGame {
     this.winner = null;
     this.isHost = false; // First player who created the game
     this.isPaused = false;
+    this.gameStartTime = null; // Track when game started for summary
     
     this.agoraClient = null;
     this.convoAIManager = null;
@@ -83,6 +84,9 @@ class BingoGame {
   }
   
   async createGame(playerName) {
+    // Reset all game state for new game
+    this.resetGameState();
+    
     this.playerName = playerName;
     this.gameId = this.generateGameId();
     this.channelName = `bingo_${this.gameId}`;
@@ -129,8 +133,10 @@ class BingoGame {
       hasWon: false
     });
     
-    // Initialize ConvoAI manager
-    this.convoAIManager = new ConvoAIManager();
+    // Initialize ConvoAI manager if not already initialized
+    if (!this.convoAIManager) {
+      this.convoAIManager = new ConvoAIManager();
+    }
     
     // Broadcast game creation
     await this.broadcastGameState('game-created');
@@ -140,6 +146,9 @@ class BingoGame {
   }
   
   async joinGame(gameId, playerName) {
+    // Reset all game state for new game
+    this.resetGameState();
+    
     this.playerName = playerName;
     this.gameId = gameId;
     this.channelName = `bingo_${this.gameId}`;
@@ -182,8 +191,10 @@ class BingoGame {
       hasWon: false
     });
     
-    // Initialize ConvoAI manager
-    this.convoAIManager = new ConvoAIManager();
+    // Initialize ConvoAI manager if not already initialized
+    if (!this.convoAIManager) {
+      this.convoAIManager = new ConvoAIManager();
+    }
     
     // Broadcast join and request game state
     await this.broadcastGameState('player-joined');
@@ -192,6 +203,11 @@ class BingoGame {
     setTimeout(() => {
       this.broadcastGameState('presence-request');
     }, 1000);
+    
+    // Request full game state if game is in progress
+    setTimeout(() => {
+      this.broadcastGameState('game-state-request');
+    }, 1500);
     
     console.log('Joined game:', this.gameId);
   }
@@ -257,18 +273,37 @@ class BingoGame {
               this.updateUI();
             }
             
-            // If we just joined, send current state back
-            if (this.gameStatus === 'playing' || this.calledNumbers.length > 0) {
-              this.broadcastGameState('game-state-sync', {
-                calledNumbers: this.calledNumbers,
-                gameStatus: this.gameStatus,
-                players: Array.from(this.players.entries()).map(([uid, player]) => ({
-                  uid, ...player
-                }))
-              });
+            // If we're the host and game is in progress, send full game state to the new player
+            if (this.isHost && (this.gameStatus === 'playing' || this.calledNumbers.length > 0)) {
+              console.log('Sending game state to late joiner:', data.playerName);
+              // Send directly to the new player
+              setTimeout(() => {
+                this.broadcastGameState('game-state-sync', {
+                  calledNumbers: this.calledNumbers,
+                  gameStatus: this.gameStatus,
+                  players: Array.from(this.players.entries()).map(([uid, player]) => ({
+                    uid, ...player
+                  }))
+                });
+              }, 500);
             }
             
             this.updateUI();
+          }
+          break;
+          
+        case 'game-state-request':
+          // Someone is requesting the current game state (late joiner)
+          if (data.uid !== this.playerUid && this.isHost) {
+            console.log('Received game state request from:', data.uid);
+            // Send full game state to the requester
+            this.broadcastGameState('game-state-sync', {
+              calledNumbers: this.calledNumbers,
+              gameStatus: this.gameStatus,
+              players: Array.from(this.players.entries()).map(([uid, player]) => ({
+                uid, ...player
+              }))
+            });
           }
           break;
           
@@ -276,10 +311,12 @@ class BingoGame {
           // Sync game state for late joiners
           if (data.calledNumbers) {
             this.calledNumbers = data.calledNumbers;
+            console.log('Synced called numbers:', this.calledNumbers.length, 'numbers');
             // Don't auto-mark - let players mark manually
           }
           if (data.gameStatus) {
             this.gameStatus = data.gameStatus;
+            console.log('Synced game status:', this.gameStatus);
           }
           if (data.players) {
             data.players.forEach(player => {
@@ -289,8 +326,14 @@ class BingoGame {
                   score: player.score,
                   hasWon: player.hasWon
                 });
+              } else {
+                // Update our own entry if it exists
+                if (this.players.has(this.playerUid)) {
+                  this.players.get(this.playerUid).score = player.score;
+                }
               }
             });
+            console.log('Synced players:', Array.from(this.players.keys()).length, 'players');
           }
           this.updateUI();
           break;
@@ -387,6 +430,7 @@ class BingoGame {
     
     this.gameStatus = 'playing';
     this.isPaused = false;
+    this.gameStartTime = Date.now(); // Track game start time
     this.updateUI();
     
     // Broadcast game start
@@ -433,6 +477,7 @@ class BingoGame {
   }
   
   async endGame() {
+    // Stop everything immediately
     this.stopCaller();
     this.gameStatus = 'finished';
     
@@ -453,20 +498,69 @@ class BingoGame {
       winnerPlayer.hasWon = true;
     }
     
-    // Announce game end with agent FIRST
+    // Build game summary
+    const totalNumbersCalled = this.calledNumbers.length;
+    const totalPlayers = this.players.size;
+    let gameDuration = 'unknown';
+    
+    if (this.gameStartTime) {
+      const durationMs = Date.now() - this.gameStartTime;
+      const durationMinutes = Math.floor(durationMs / 60000);
+      const durationSeconds = Math.floor((durationMs % 60000) / 1000);
+      gameDuration = durationMinutes > 0 
+        ? `${durationMinutes} minute${durationMinutes !== 1 ? 's' : ''} and ${durationSeconds} second${durationSeconds !== 1 ? 's' : ''}`
+        : `${durationSeconds} second${durationSeconds !== 1 ? 's' : ''}`;
+    }
+    
+    // Build winner announcement message with summary
+    let announcement = '';
+    if (this.winner) {
+      const playerScores = Array.from(this.players.entries())
+        .map(([uid, player]) => `${player.name} finished with ${player.score} hit${player.score !== 1 ? 's' : ''}`)
+        .join(', ');
+      
+      announcement = `Game over! ${this.winner} wins! Game summary: We played for ${gameDuration}, called ${totalNumbersCalled} number${totalNumbersCalled !== 1 ? 's' : ''}, and had ${totalPlayers} player${totalPlayers !== 1 ? 's' : ''} competing! Final scores: ${playerScores}. What an exciting game! Thanks for playing everyone!`;
+    } else {
+      announcement = `Game ended! Game summary: We played for ${gameDuration}, called ${totalNumbersCalled} number${totalNumbersCalled !== 1 ? 's' : ''}, and had ${totalPlayers} player${totalPlayers !== 1 ? 's' : ''} competing! Thanks for playing everyone! That was fun!`;
+    }
+    
+    // Announce game end with agent
     if (this.isHost) {
-      if (this.winner) {
-        const playerScores = Array.from(this.players.entries())
-          .map(([uid, player]) => `${player.name} with ${player.score} hit${player.score !== 1 ? 's' : ''}`)
-          .join(', ');
-        
-        await this.announceGameEvent(`Game ended early! ${this.winner} was in the lead! Final scores: ${playerScores}. Thanks for playing everyone!`);
+      console.log('Ending game - checking agent status...');
+      console.log('convoAIManager exists:', !!this.convoAIManager);
+      console.log('isAgentActive:', this.convoAIManager?.isAgentActive);
+      console.log('currentAgentId:', this.convoAIManager?.currentAgentId);
+      
+      if (!this.convoAIManager) {
+        console.log('ConvoAI manager not initialized, creating new one...');
+        this.convoAIManager = new ConvoAIManager();
+      }
+      
+      // Check if agent is already active
+      if (this.convoAIManager.isAgentActive && this.convoAIManager.currentAgentId) {
+        console.log('Agent is active, sending game over message to existing agent...');
+        // Send message to existing agent, wait for it to speak, then stop it
+        try {
+          await this.convoAIManager.sendAnnouncementMessage(announcement);
+          // Wait for agent to finish speaking (monitor state)
+          await this.convoAIManager.monitorAgentUntilFinished();
+          // Stop the agent after it finishes
+          await this.convoAIManager.stopAgent();
+        } catch (error) {
+          console.error('Failed to send message to active agent:', error);
+          // If that fails, stop agent and start a new one
+          await this.convoAIManager.stopAgent();
+          await this.announceGameEvent(announcement);
+        }
       } else {
-        await this.announceGameEvent('Game ended! Thanks for playing everyone! That was fun!');
+        // No active agent, join one and announce
+        console.log('No active agent, starting new agent to announce game over...');
+        console.log('Announcement message:', announcement);
+        await this.announceGameEvent(announcement);
       }
     }
     
-    // Then broadcast to all players
+    // Broadcast to all players
     this.broadcastGameState('game-ended', {
       winner: this.winner,
       finalScores: Array.from(this.players.entries()).map(([uid, p]) => ({
@@ -742,11 +836,25 @@ class BingoGame {
   async triggerWinnerCommentary() {
     if (!this.convoAIManager || !this.isHost) return;
     
+    // Build game summary
+    const totalNumbersCalled = this.calledNumbers.length;
+    const totalPlayers = this.players.size;
+    let gameDuration = 'unknown';
+    
+    if (this.gameStartTime) {
+      const durationMs = Date.now() - this.gameStartTime;
+      const durationMinutes = Math.floor(durationMs / 60000);
+      const durationSeconds = Math.floor((durationMs % 60000) / 1000);
+      gameDuration = durationMinutes > 0 
+        ? `${durationMinutes} minute${durationMinutes !== 1 ? 's' : ''} and ${durationSeconds} second${durationSeconds !== 1 ? 's' : ''}`
+        : `${durationSeconds} second${durationSeconds !== 1 ? 's' : ''}`;
+    }
+    
     const playerScores = Array.from(this.players.entries())
       .map(([uid, player]) => `${player.name} finished with ${player.score} hit${player.score !== 1 ? 's' : ''}`)
       .join(', ');
     
-    const announcement = `WE HAVE A WINNER! ${this.winner} got BINGO and wins the game! Amazing performance! Final scores: ${playerScores}. What an incredible game! Congratulations ${this.winner}!`;
+    const announcement = `WE HAVE A WINNER! ${this.winner} got BINGO and wins the game! Game summary: We played for ${gameDuration}, called ${totalNumbersCalled} number${totalNumbersCalled !== 1 ? 's' : ''}, and had ${totalPlayers} player${totalPlayers !== 1 ? 's' : ''} competing! Final scores: ${playerScores}. What an incredible game! Congratulations ${this.winner}!`;
     
     console.log('Announcing winner to agent:', announcement);
     
@@ -816,6 +924,26 @@ class BingoGame {
     this.players.clear();
     this.markedCells.clear();
     this.calledNumbers = [];
+  }
+  
+  resetGameState() {
+    // Reset all game state when creating/joining a new game
+    this.players.clear();
+    this.markedCells.clear();
+    this.calledNumbers = [];
+    this.score = 0;
+    this.gameStatus = 'waiting';
+    this.winner = null;
+    this.isPaused = false;
+    this.gameStartTime = null;
+    this.stopCaller();
+    
+    // Clean up ConvoAI manager
+    if (this.convoAIManager) {
+      this.convoAIManager.cleanup();
+    }
+    
+    console.log('Game state reset for new game');
   }
 }
 

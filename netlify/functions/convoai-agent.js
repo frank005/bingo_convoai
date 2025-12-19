@@ -80,6 +80,7 @@ function buildTTSConfig() {
         key: process.env.MICROSOFT_TTS_KEY,
         region: process.env.MICROSOFT_TTS_REGION || 'eastus',
         voice_name: process.env.MICROSOFT_TTS_VOICE || 'en-US-JennyNeural',
+        speed: 1.3,
         sample_rate: parseInt(process.env.MICROSOFT_TTS_SAMPLE_RATE || '24000', 10)
       };
       if (process.env.MICROSOFT_TTS_RATE) config.params.rate = parseFloat(process.env.MICROSOFT_TTS_RATE);
